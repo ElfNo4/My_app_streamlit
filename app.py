@@ -103,7 +103,7 @@ def generate_pdf(df, selected_cols, stats_df):
     return buffer.getvalue()
 
 # Interface principal
-st.title("Análise Financeira de XLSX")
+st.title("Ferramenta de Análise Estatística de Dados Financeiros by Pamella Vilela")
 
 # Botão para baixar modelo
 st.download_button(
@@ -189,4 +189,5 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"Erro inesperado: {str(e)}")
         st.error(f"Erro inesperado: {str(e)}. Por favor, verifique o arquivo e tente novamente.")
+
 
