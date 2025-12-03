@@ -62,6 +62,32 @@ uploaded_file = st.file_uploader("Carregue seu arquivo XLSX preenchido", type=["
 if uploaded_file:
     try:
         df = pd.read_excel(uploaded_file, engine='openpyxl', sheet_name=0)
+        # ---- Correção para qualquer coluna 2D vinda do Excel ----
+
+# Se o Excel tiver colunas mescladas ou cabeçalhos estranhos, corrige automaticamente
+df.columns = df.columns.map(lambda x: str(x).strip())
+
+# Remove colunas completamente vazias
+df = df.dropna(axis=1, how='all')
+
+# Corrige colunas multi-índice (às vezes o Excel cria níveis)
+if isinstance(df.columns, pd.MultiIndex):
+    df.columns = ['_'.join([str(x) for x in col]).strip() for col in df.columns]
+
+# Converte cada coluna para 1D obrigatoriamente
+for col in df.columns:
+    if isinstance(df[col].iloc[0], (list, tuple)) or hasattr(df[col].iloc[0], "__len__") and not isinstance(df[col].iloc[0], str):
+        # Achata a coluna (pega apenas o primeiro valor)
+        df[col] = df[col].apply(lambda x: x[0] if hasattr(x, "__len__") and not isinstance(x, str) else x)
+
+# Converte coluna "mês" para string
+if "mês" in df.columns:
+    df["mês"] = df["mês"].astype(str).str.strip()
+
+# Tenta converter números corretamente
+for col in df.columns:
+    df[col] = pd.to_numeric(df[col], errors="ignore")
+
 
         if df.empty:
             st.error("O arquivo está vazio.")
@@ -204,3 +230,4 @@ if uploaded_file:
 # Rodapé
 st.markdown("---")
 st.markdown("<p style='text-align:center; color:#888;'>Desenvolvido com ❤️ por Pamella Vilela</p>", unsafe_allow_html=True)
+
