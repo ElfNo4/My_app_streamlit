@@ -5,13 +5,12 @@ import io
 import base64
 from datetime import datetime
 
-# Forçar backend para Streamlit
 plt.switch_backend('Agg')
 
-# Configuração da página
 st.set_page_config(page_title="Análise de Investimentos - Pamella Vilela", layout="wide")
 
-# CSS personalizado
+
+# ==================== CSS ====================
 st.markdown("""
 <style>
     .main {background-color: #f8f9fc; padding: 20px;}
@@ -20,11 +19,10 @@ st.markdown("""
         color: white; border: none; padding: 12px 30px;
         border-radius: 8px; font-weight: bold;
     }
-    .stButton>button:hover {opacity: 0.9;}
     .title {font-size: 42px !important; color: #2575fc; text-align: center;}
     .watermark {
         position: fixed; bottom: 15px; right: 20px; opacity: 0.6;
-        font-size: 14px; color: #888; font-style: italic;
+        font-size: 14px; color: #888;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -33,188 +31,132 @@ st.markdown('<h1 class="title">Análise de Investimentos</h1>', unsafe_allow_htm
 st.markdown('<div class="watermark">by Pamella Vilela</div>', unsafe_allow_html=True)
 
 
-# ==================== 1. Modelo XLSX ====================
+# ==================== 1. NOVO MODELO XLSX (LIMPO E CORRETO) ====================
 def criar_modelo():
-    dados = {
-        'mês': ['Janeiro/2024', 'Fevereiro/2024', 'Março/2024'],
-        'aporte': [1000.00, 1200.00, 1500.00],
-        'taxa de juros': [0.005, 0.0055, 0.006],
-        'saldo inicial': [0.00, 1005.00, 2215.28],
-        'juros do mês': [5.00, 11.28, 13.29],
-        'saldo final': [1005.00, 2215.28, 3728.57]
-    }
-    df = pd.DataFrame(dados)
+    df = pd.DataFrame({
+        "mês": ["Janeiro/2024", "Fevereiro/2024", "Março/2024"],
+        "aporte": [1000, 1200, 1500],
+        "taxa de juros": [0.005, 0.0055, 0.006],
+        "saldo inicial": [0.0, 1005.0, 2215.28],
+        "juros do mês": [5.0, 11.28, 13.29],
+        "saldo final": [1005.0, 2215.28, 3728.57]
+    })
+
+    # Geração do XLSX sem risco de multi-index ou merges
     output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Investimentos')
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df.to_excel(writer, index=False, sheet_name="Investimentos")
+
     output.seek(0)
     return output.getvalue()
 
 
 st.download_button(
-    label="📥 Baixar Modelo XLSX",
+    "📥 Baixar Modelo XLSX (corrigido)",
     data=criar_modelo(),
     file_name="modelo_investimentos.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
 
 
-# ==================== 2. Upload ====================
+# ==================== 2. UPLOAD DO ARQUIVO ====================
 uploaded_file = st.file_uploader("Carregue seu arquivo XLSX preenchido", type=["xlsx"])
 
 if uploaded_file:
     try:
-        df = pd.read_excel(uploaded_file, engine='openpyxl', sheet_name=0)
+        df = pd.read_excel(uploaded_file, engine="openpyxl")
 
-        # ---------------------------------------------------------
-        # 🚨 CORREÇÃO DEFINITIVA DE COLUNAS 2D DO EXCEL
-        # ---------------------------------------------------------
+        # LIMPEZA GARANTIDA — elimina qualquer estrutura 2D
+        df.columns = df.columns.map(str)
 
-        # Normaliza cabeçalhos
-        df.columns = df.columns.map(lambda x: str(x).strip())
-
-        # Remove colunas completamente vazias
-        df = df.dropna(axis=1, how='all')
-
-        # Converte cabeçalho MultiIndex do Excel
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = ['_'.join([str(x) for x in col]).strip() for col in df.columns]
-
-        # Converte colunas que vieram como listas, tuplas, arrays → 1D
+        # Força todas as colunas a serem 1D
         for col in df.columns:
-            first = df[col].iloc[0]
+            df[col] = df[col].apply(
+                lambda x: x[0] if isinstance(x, (list, tuple)) else x
+            )
 
-            # Lista ou tupla → pega o primeiro elemento
-            if isinstance(first, (list, tuple)):
-                df[col] = df[col].apply(lambda x: x[0] if isinstance(x, (list, tuple)) else x)
-
-            # Array numpy → item() quando possível
-            elif hasattr(first, "__len__") and not isinstance(first, str):
-                try:
-                    df[col] = df[col].apply(lambda x: x.item() if hasattr(x, "item") else x)
-                except:
-                    pass
-
-        # Coluna "mês" sempre string
         if "mês" in df.columns:
-            df["mês"] = df["mês"].astype(str).str.strip()
-
-
-        # ---------------------------------------------------------
-        # Fim da correção 2D
-        # ---------------------------------------------------------
-
-        if df.empty:
-            st.error("O arquivo está vazio.")
-            st.stop()
-
-        if df.isnull().any().any():
-            st.error("Existem células vazias no arquivo.")
-            st.stop()
+            df["mês"] = df["mês"].astype(str)
 
         st.success("Arquivo carregado com sucesso!")
-
-        st.subheader("Pré-visualização")
         st.dataframe(df, use_container_width=True)
 
-        # ==================== 3. Estatísticas ====================
-        colunas_numericas = df.select_dtypes(include='number').columns.tolist()
 
-        colunas_selecionadas = st.multiselect(
-            "Selecione as colunas numéricas para análise",
-            colunas_numericas,
-            default=colunas_numericas
-        )
+        # ==================== 3. ESTATÍSTICAS ====================
+        num_cols = df.select_dtypes(include="number").columns.tolist()
 
         stats = pd.DataFrame({
-            "Média": df[colunas_selecionadas].mean(),
-            "Mediana": df[colunas_selecionadas].median(),
-            "Moda": df[colunas_selecionadas].apply(lambda x: x.mode().tolist() if not x.mode().empty else "N/A"),
-            "Desvio Padrão": df[colunas_selecionadas].std()
-        }).round(4)
+            "Média": df[num_cols].mean(),
+            "Mediana": df[num_cols].median(),
+            "Moda": df[num_cols].apply(lambda x: x.mode()[0] if not x.mode().empty else "N/A"),
+            "Desvio Padrão": df[num_cols].std()
+        })
 
         st.subheader("Estatísticas Descritivas")
         st.table(stats)
 
-        # ==================== 4. Gráficos ====================
-        figuras = []
+
+        # ==================== 4. GRÁFICOS ====================
+        figs = []
 
         if "mês" in df.columns and "saldo final" in df.columns:
-            df_sorted = df.sort_values("mês").copy()
-            df_sorted["mês"] = df_sorted["mês"].astype(str)
+            df_sorted = df.sort_values("mês")
 
-            # ---- Gráfico 1 ----
-            fig, ax = plt.subplots(figsize=(10, 5))
-            ax.plot(df_sorted["mês"], df_sorted["saldo final"], marker="o", linewidth=3, color="#2575fc")
-            ax.set_title("Evolução do Saldo Final")
-            ax.grid(True, alpha=0.3)
+            fig, ax = plt.subplots(figsize=(9, 4))
+            ax.plot(df_sorted["mês"], df_sorted["saldo final"], marker="o", linewidth=3)
+            ax.grid(True)
             plt.xticks(rotation=45)
-            plt.tight_layout()
             st.pyplot(fig)
-            figuras.append(fig)
+            figs.append(fig)
 
-            # ---- Gráfico 2 ----
-            if "aporte" in df.columns:
-                x = range(len(df_sorted))
-                cumulativo = df_sorted["aporte"].cumsum()
+        if "aporte" in df.columns:
+            df_sorted = df.sort_values("mês")
+            cumul = df_sorted["aporte"].cumsum()
+            x = range(len(cumul))
 
-                fig2, ax2 = plt.subplots(figsize=(10, 5))
-                ax2.fill_between(x, cumulativo, alpha=0.7, color="#6a11cb")
-                ax2.plot(x, cumulativo, marker="o", linewidth=3, color="#2575fc")
-                ax2.set_title("Aportes Cumulativos")
-                ax2.grid(True, alpha=0.3)
-                plt.xticks(x, df_sorted["mês"], rotation=45)
-                plt.tight_layout()
-                st.pyplot(fig2)
-                figuras.append(fig2)
+            fig2, ax2 = plt.subplots(figsize=(9, 4))
+            ax2.fill_between(x, cumul, alpha=.6)
+            ax2.plot(x, cumul, marker="o")
+            ax2.grid(True)
+            plt.xticks(x, df_sorted["mês"], rotation=45)
+            st.pyplot(fig2)
+            figs.append(fig2)
 
-        # ==================== 5. PDF/HTML ====================
+
+        # ==================== 5. GERAR PDF (HTML) ====================
         def criar_pdf():
             html = f"""
-            <html>
-            <head>
-                <meta charset='utf-8'>
-                <style>
-                    body {{ font-family: Arial; margin: 40px; background: #f8f9fc; }}
-                    h1 {{ color: #2575fc; text-align: center; }}
-                    table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
-                    th, td {{ border: 1px solid #ccc; padding: 10px; text-align: center; }}
-                    th {{ background: #2575fc; color: white; }}
-                </style>
-            </head>
-            <body>
-                <h1>Relatório de Análise de Investimentos</h1>
-                <p><strong>Data:</strong> {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
-
-                <h2>Estatísticas</h2>
-                {stats.to_html()}
-
-                <h2>Gráficos</h2>
+            <html><body>
+            <h1>Relatório de Análise</h1>
+            <p><b>Gerado em:</b> {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
+            <h2>Estatísticas</h2>
+            {stats.to_html()}
             """
 
-            for fig in figuras:
+            for f in figs:
                 buf = io.BytesIO()
-                fig.savefig(buf, format="png", dpi=200, bbox_inches="tight")
+                f.savefig(buf, format="png", dpi=180, bbox_inches="tight")
                 buf.seek(0)
-                img_base64 = base64.b64encode(buf.read()).decode()
-                html += f'<img src="data:image/png;base64,{img_base64}" style="width:100%; margin-bottom:25px;">'
+                img = base64.b64encode(buf.read()).decode()
+                html += f'<img src="data:image/png;base64,{img}" style="width:100%; margin:20px 0;">'
 
             html += "</body></html>"
             return html
 
-        pdf_html = criar_pdf()
+        html_relatorio = criar_pdf()
 
         st.download_button(
-            "📄 Baixar Relatório (HTML → PDF via Ctrl+P)",
-            data=pdf_html,
+            "📄 Baixar Relatório em HTML",
+            data=html_relatorio,
             file_name="relatorio_investimentos.html",
             mime="text/html"
         )
 
+
     except Exception as e:
-        st.error(f"Erro inesperado: {str(e)}")
+        st.error(f"Erro inesperado: {e}")
 
 
-# ----------------- Rodapé -----------------
+# ==================== Rodapé ====================
 st.markdown("---")
-st.markdown("<p style='text-align:center;color:#888;'>Desenvolvido com ❤️ por Pamella Vilela</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center;'>Feito com ❤️ por Pamella Vilela</p>", unsafe_allow_html=True)
