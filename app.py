@@ -32,7 +32,8 @@ st.markdown("""
 st.markdown('<h1 class="title">Análise de Investimentos</h1>', unsafe_allow_html=True)
 st.markdown('<div class="watermark">by Pamella Vilela</div>', unsafe_allow_html=True)
 
-# ==================== 1. Download do Modelo ====================
+
+# ==================== 1. Modelo XLSX ====================
 def criar_modelo():
     dados = {
         'mês': ['Janeiro/2024', 'Fevereiro/2024', 'Março/2024'],
@@ -49,79 +50,82 @@ def criar_modelo():
     output.seek(0)
     return output.getvalue()
 
+
 st.download_button(
-    label="📥 Baixar Modelo XLSX (preenchimento obrigatório)",
+    label="📥 Baixar Modelo XLSX",
     data=criar_modelo(),
     file_name="modelo_investimentos.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 
-# ==================== 2. Upload do arquivo ====================
+
+# ==================== 2. Upload ====================
 uploaded_file = st.file_uploader("Carregue seu arquivo XLSX preenchido", type=["xlsx"])
 
 if uploaded_file:
     try:
         df = pd.read_excel(uploaded_file, engine='openpyxl', sheet_name=0)
-        # ---- Correção para qualquer coluna 2D vinda do Excel ----
 
-# Se o Excel tiver colunas mescladas ou cabeçalhos estranhos, corrige automaticamente
-df.columns = df.columns.map(lambda x: str(x).strip())
+        # ---------------------------------------------------------
+        # 🚨 CORREÇÃO DEFINITIVA DE COLUNAS 2D DO EXCEL
+        # ---------------------------------------------------------
 
-# Remove colunas completamente vazias
-df = df.dropna(axis=1, how='all')
+        # Normaliza cabeçalhos
+        df.columns = df.columns.map(lambda x: str(x).strip())
 
-# Corrige colunas multi-índice (às vezes o Excel cria níveis)
-if isinstance(df.columns, pd.MultiIndex):
-    df.columns = ['_'.join([str(x) for x in col]).strip() for col in df.columns]
+        # Remove colunas completamente vazias
+        df = df.dropna(axis=1, how='all')
 
-# Converte cada coluna para 1D obrigatoriamente
-for col in df.columns:
-    if isinstance(df[col].iloc[0], (list, tuple)) or hasattr(df[col].iloc[0], "__len__") and not isinstance(df[col].iloc[0], str):
-        # Achata a coluna (pega apenas o primeiro valor)
-        df[col] = df[col].apply(lambda x: x[0] if hasattr(x, "__len__") and not isinstance(x, str) else x)
+        # Converte cabeçalho MultiIndex do Excel
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = ['_'.join([str(x) for x in col]).strip() for col in df.columns]
 
-# Converte coluna "mês" para string
-if "mês" in df.columns:
-    df["mês"] = df["mês"].astype(str).str.strip()
+        # Converte colunas que vieram como listas, tuplas, arrays → 1D
+        for col in df.columns:
+            first = df[col].iloc[0]
 
-# Tenta converter números corretamente
-for col in df.columns:
-    df[col] = pd.to_numeric(df[col], errors="ignore")
+            # Lista ou tupla → pega o primeiro elemento
+            if isinstance(first, (list, tuple)):
+                df[col] = df[col].apply(lambda x: x[0] if isinstance(x, (list, tuple)) else x)
 
+            # Array numpy → item() quando possível
+            elif hasattr(first, "__len__") and not isinstance(first, str):
+                try:
+                    df[col] = df[col].apply(lambda x: x.item() if hasattr(x, "item") else x)
+                except:
+                    pass
+
+        # Coluna "mês" sempre string
+        if "mês" in df.columns:
+            df["mês"] = df["mês"].astype(str).str.strip()
+
+
+        # ---------------------------------------------------------
+        # Fim da correção 2D
+        # ---------------------------------------------------------
 
         if df.empty:
             st.error("O arquivo está vazio.")
             st.stop()
 
         if df.isnull().any().any():
-            st.error("Existem células vazias ou dados inválidos no arquivo. Corrija e tente novamente.")
+            st.error("Existem células vazias no arquivo.")
             st.stop()
-
-        # ---- CORREÇÃO CRÍTICA: garantir que "mês" é coluna 1D e string ----
-        if 'mês' in df.columns:
-            df['mês'] = df['mês'].astype(str).str.strip()
 
         st.success("Arquivo carregado com sucesso!")
-        st.subheader("Pré-visualização dos dados")
+
+        st.subheader("Pré-visualização")
         st.dataframe(df, use_container_width=True)
 
-        # ==================== 3. Seleção de colunas ====================
+        # ==================== 3. Estatísticas ====================
         colunas_numericas = df.select_dtypes(include='number').columns.tolist()
-        if not colunas_numericas:
-            st.error("Nenhuma coluna numérica encontrada.")
-            st.stop()
 
         colunas_selecionadas = st.multiselect(
             "Selecione as colunas numéricas para análise",
-            options=colunas_numericas,
+            colunas_numericas,
             default=colunas_numericas
         )
 
-        if not colunas_selecionadas:
-            st.warning("Selecione pelo menos uma coluna.")
-            st.stop()
-
-        # ==================== 4. Estatísticas descritivas ====================
         stats = pd.DataFrame({
             "Média": df[colunas_selecionadas].mean(),
             "Mediana": df[colunas_selecionadas].median(),
@@ -132,102 +136,85 @@ for col in df.columns:
         st.subheader("Estatísticas Descritivas")
         st.table(stats)
 
-        # ==================== 5. Evolução do saldo ====================
+        # ==================== 4. Gráficos ====================
         figuras = []
 
-        if 'mês' in df.columns and 'saldo final' in df.columns:
-            # Garantir consistência dos dados
-            df_sorted = df.sort_values('mês').copy()
-            df_sorted['mês'] = df_sorted['mês'].astype(str)
+        if "mês" in df.columns and "saldo final" in df.columns:
+            df_sorted = df.sort_values("mês").copy()
+            df_sorted["mês"] = df_sorted["mês"].astype(str)
 
-            # ---------- Gráfico 1 - Saldo Final ----------
+            # ---- Gráfico 1 ----
             fig, ax = plt.subplots(figsize=(10, 5))
-            ax.plot(df_sorted['mês'], df_sorted['saldo final'],
-                    marker='o', linewidth=3, color='#2575fc')
-            ax.set_title('Evolução do Saldo Final', fontsize=16, fontweight='bold')
-            ax.set_xlabel('Mês')
-            ax.set_ylabel('Saldo Final (R$)')
+            ax.plot(df_sorted["mês"], df_sorted["saldo final"], marker="o", linewidth=3, color="#2575fc")
+            ax.set_title("Evolução do Saldo Final")
             ax.grid(True, alpha=0.3)
             plt.xticks(rotation=45)
             plt.tight_layout()
             st.pyplot(fig)
             figuras.append(fig)
 
-            # ---------- Gráfico 2 - Aportes Cumulativos ----------
-            if 'aporte' in df.columns:
+            # ---- Gráfico 2 ----
+            if "aporte" in df.columns:
                 x = range(len(df_sorted))
-                cumulativo = df_sorted['aporte'].cumsum()
+                cumulativo = df_sorted["aporte"].cumsum()
 
                 fig2, ax2 = plt.subplots(figsize=(10, 5))
-                ax2.fill_between(x, cumulativo, alpha=0.7, color='#6a11cb')
-                ax2.plot(x, cumulativo, marker='o', color='#2575fc', linewidth=3)
-                ax2.set_title('Evolução do Total Investido (Aportes Cumulativos)', fontsize=16, fontweight='bold')
-                ax2.set_ylabel('Total Investido (R$)')
+                ax2.fill_between(x, cumulativo, alpha=0.7, color="#6a11cb")
+                ax2.plot(x, cumulativo, marker="o", linewidth=3, color="#2575fc")
+                ax2.set_title("Aportes Cumulativos")
                 ax2.grid(True, alpha=0.3)
-
-                plt.xticks(x, df_sorted['mês'], rotation=45)
+                plt.xticks(x, df_sorted["mês"], rotation=45)
                 plt.tight_layout()
                 st.pyplot(fig2)
                 figuras.append(fig2)
 
-        # ==================== 6. Geração do PDF (HTML) ====================
+        # ==================== 5. PDF/HTML ====================
         def criar_pdf():
             html = f"""
             <html>
             <head>
-                <meta charset="utf-8">
+                <meta charset='utf-8'>
                 <style>
-                    body {{ font-family: Arial, sans-serif; margin: 40px; background: #f8f9fc; }}
+                    body {{ font-family: Arial; margin: 40px; background: #f8f9fc; }}
                     h1 {{ color: #2575fc; text-align: center; }}
                     table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
-                    th, td {{ border: 1px solid #ddd; padding: 12px; text-align: center; }}
+                    th, td {{ border: 1px solid #ccc; padding: 10px; text-align: center; }}
                     th {{ background: #2575fc; color: white; }}
-                    .watermark {{ position: fixed; bottom: 30px; right: 30px; opacity: 0.5; font-size: 18px; }}
                 </style>
             </head>
             <body>
                 <h1>Relatório de Análise de Investimentos</h1>
-                <p><strong>Data do relatório:</strong> {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
-                <h2>Estatísticas Descritivas</h2>
+                <p><strong>Data:</strong> {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
+
+                <h2>Estatísticas</h2>
                 {stats.to_html()}
+
                 <h2>Gráficos</h2>
             """
 
             for fig in figuras:
                 buf = io.BytesIO()
-                fig.savefig(buf, format='png', dpi=200, bbox_inches='tight')
+                fig.savefig(buf, format="png", dpi=200, bbox_inches="tight")
                 buf.seek(0)
                 img_base64 = base64.b64encode(buf.read()).decode()
-                html += f'<img src="data:image/png;base64,{img_base64}" style="width:100%; margin:30px 0;"><br>'
+                html += f'<img src="data:image/png;base64,{img_base64}" style="width:100%; margin-bottom:25px;">'
 
-            html += """
-                <div class="watermark">by Pamella Vilela</div>
-            </body>
-            </html>
-            """
-
+            html += "</body></html>"
             return html
 
         pdf_html = criar_pdf()
 
-        st.subheader("Relatório Completo Gerado")
-        st.markdown("### ✅ Tudo pronto! Clique no botão abaixo para baixar o PDF completo:")
-
         st.download_button(
-            label="📄 Baixar Relatório em PDF",
+            "📄 Baixar Relatório (HTML → PDF via Ctrl+P)",
             data=pdf_html,
-            file_name=f"relatorio_investimentos_{datetime.now().strftime('%Y%m%d')}.html",
-            mime="text/html",
-            help="Após baixar, abra o arquivo HTML e use Ctrl+P → Salvar como PDF."
+            file_name="relatorio_investimentos.html",
+            mime="text/html"
         )
-
-        st.info("💡 Dica: Abra o arquivo no navegador e pressione Ctrl+P → 'Salvar como PDF'.")
 
     except Exception as e:
         st.error(f"Erro inesperado: {str(e)}")
-        st.error("Verifique se o arquivo segue exatamente o modelo baixado acima.")
 
-# Rodapé
+
+# ----------------- Rodapé -----------------
 st.markdown("---")
-st.markdown("<p style='text-align:center; color:#888;'>Desenvolvido com ❤️ por Pamella Vilela</p>", unsafe_allow_html=True)
-
+st.markdown("<p style='text-align:center;color:#888;'>Desenvolvido com ❤️ por Pamella Vilela</p>", unsafe_allow_html=True)
