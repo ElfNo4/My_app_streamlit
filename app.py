@@ -24,7 +24,7 @@ st.markdown("""
 # Watermark
 st.markdown('<div class="watermark">by Pamella Vilela</div>', unsafe_allow_html=True)
 
-st.title("Análise Estatística de Dados Financeiros by Pamella Vilela")
+st.title("Análise Estatística de Dados Financeiros")
 
 # Botão para download do blueprint XLSX
 def generate_blueprint():
