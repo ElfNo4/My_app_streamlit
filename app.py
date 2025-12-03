@@ -155,17 +155,16 @@ if uploaded_file:
         def gerar_pdf(_stats, _figuras, _df):
             pdf = FPDF(orientation='P', unit='mm', format='A4')
             pdf.add_page()
-            pdf.add_font('Arial', '', 'Arial.ttf', uni=True) # Suporte a acentos
-            pdf.set_font('Arial', 'B', 16)
+            pdf.set_font('helvetica', 'B', 16)
             pdf.cell(0, 10, 'Relatório de Análise de Investimentos', ln=1, align='C')
-            pdf.set_font('Arial', '', 12)
+            pdf.set_font('helvetica', '', 12)
             pdf.cell(0, 10, f'Data do relatório: {datetime.now().strftime("%d/%m/%Y %H:%M")}', ln=1, align='C')
            
             # Estatísticas
             pdf.ln(10)
-            pdf.set_font('Arial', 'B', 14)
+            pdf.set_font('helvetica', 'B', 14)
             pdf.cell(0, 10, 'Estatísticas Descritivas', ln=1)
-            pdf.set_font('Arial', '', 10)
+            pdf.set_font('helvetica', '', 10)
             # Cabeçalho da tabela
             pdf.cell(40, 8, 'Coluna', 1)
             pdf.cell(35, 8, 'Média', 1)
@@ -185,7 +184,7 @@ if uploaded_file:
             # Gráficos
             if _figuras:
                 pdf.ln(10)
-                pdf.set_font('Arial', 'B', 14)
+                pdf.set_font('helvetica', 'B', 14)
                 pdf.cell(0, 10, 'Gráficos da Análise', ln=1)
                 for i, fig in enumerate(_figuras):
                     img_buffer = io.BytesIO()
@@ -195,7 +194,7 @@ if uploaded_file:
                     pdf.ln(10)
            
             # Watermark
-            pdf.set_font('Arial', 'I', 12)
+            pdf.set_font('helvetica', 'I', 12)
             pdf.set_xy(150, 270)
             pdf.cell(0, 10, 'by Pamella Vilela', 0, align='R')
            
