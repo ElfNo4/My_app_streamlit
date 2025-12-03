@@ -199,25 +199,4 @@ if uploaded_file:
             pdf.cell(0, 10, 'by Pamella Vilela', 0, align='R')
            
             output_pdf = io.BytesIO()
-            output_pdf.write(pdf.output(dest='S').encode('latin1')) # Encode para bytes
-            output_pdf.seek(0)
-            return output_pdf.getvalue()
-        # Botão de download do PDF
-        pdf_data = gerar_pdf(stats, figuras, df)
-        st.subheader("📄 Relatório Completo Gerado")
-        st.success("✅ Análise realizada! Baixe o PDF com estatísticas e gráficos.")
-        st.download_button(
-            label="Baixar Relatório em PDF",
-            data=pdf_data,
-            file_name=f"relatorio_investimentos_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-            mime="application/pdf"
-        )
-    except ValueError as ve:
-        st.error(f"❌ Erro de validação: {str(ve)}")
-        st.info("💡 Dica: Use exatamente o modelo baixado e preencha apenas números nas colunas indicadas.")
-    except Exception as e:
-        st.error(f"❌ Erro inesperado: {str(e)}")
-        st.error("Verifique o console do terminal para mais detalhes e tente novamente.")
-# Rodapé
-st.markdown("---")
-st.markdown("<p style='text-align:center; color:#888;'>Desenvolvido com ❤️ por Pamella Vilela</p>", unsafe_allow_html=True)
+            output_pdf
