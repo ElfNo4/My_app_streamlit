@@ -5,13 +5,13 @@ import io
 import base64
 from datetime import datetime
 
-# Forçar o backend não-interativo do matplotlib (essencial para Streamlit)
+# Forçar backend para Streamlit
 plt.switch_backend('Agg')
 
 # Configuração da página
 st.set_page_config(page_title="Análise de Investimentos - Pamella Vilela", layout="wide")
 
-# CSS personalizado + estilo moderno
+# CSS personalizado
 st.markdown("""
 <style>
     .main {background-color: #f8f9fc; padding: 20px;}
@@ -71,6 +71,10 @@ if uploaded_file:
             st.error("Existem células vazias ou dados inválidos no arquivo. Corrija e tente novamente.")
             st.stop()
 
+        # ---- CORREÇÃO CRÍTICA: garantir que "mês" é coluna 1D e string ----
+        if 'mês' in df.columns:
+            df['mês'] = df['mês'].astype(str).str.strip()
+
         st.success("Arquivo carregado com sucesso!")
         st.subheader("Pré-visualização dos dados")
         st.dataframe(df, use_container_width=True)
@@ -106,35 +110,41 @@ if uploaded_file:
         figuras = []
 
         if 'mês' in df.columns and 'saldo final' in df.columns:
-            df_sorted = df.sort_values('mês')
+            # Garantir consistência dos dados
+            df_sorted = df.sort_values('mês').copy()
+            df_sorted['mês'] = df_sorted['mês'].astype(str)
 
-            # Gráfico 1 - Saldo Final
+            # ---------- Gráfico 1 - Saldo Final ----------
             fig, ax = plt.subplots(figsize=(10, 5))
-            ax.plot(df_sorted['mês'], df_sorted['saldo final'], marker='o', linewidth=3, color='#2575fc')
+            ax.plot(df_sorted['mês'], df_sorted['saldo final'],
+                    marker='o', linewidth=3, color='#2575fc')
             ax.set_title('Evolução do Saldo Final', fontsize=16, fontweight='bold')
             ax.set_xlabel('Mês')
             ax.set_ylabel('Saldo Final (R$)')
             ax.grid(True, alpha=0.3)
             plt.xticks(rotation=45)
             plt.tight_layout()
-            figuras.append(fig)
             st.pyplot(fig)
+            figuras.append(fig)
 
-            # Gráfico 2 - Aportes cumulativos
+            # ---------- Gráfico 2 - Aportes Cumulativos ----------
             if 'aporte' in df.columns:
-                fig2, ax2 = plt.subplots(figsize=(10, 5))
+                x = range(len(df_sorted))
                 cumulativo = df_sorted['aporte'].cumsum()
-                ax2.fill_between(df_sorted['mês'], cumulativo, alpha=0.7, color='#6a11cb')
-                ax2.plot(df_sorted['mês'], cumulativo, marker='o', color='#2575fc', linewidth=3)
+
+                fig2, ax2 = plt.subplots(figsize=(10, 5))
+                ax2.fill_between(x, cumulativo, alpha=0.7, color='#6a11cb')
+                ax2.plot(x, cumulativo, marker='o', color='#2575fc', linewidth=3)
                 ax2.set_title('Evolução do Total Investido (Aportes Cumulativos)', fontsize=16, fontweight='bold')
                 ax2.set_ylabel('Total Investido (R$)')
                 ax2.grid(True, alpha=0.3)
-                plt.xticks(rotation=45)
-                plt.tight_layout()
-                figuras.append(fig2)
-                st.pyplot(fig2)
 
-        # ==================== 6. Geração do PDF (FUNCIONANDO 100%) ====================
+                plt.xticks(x, df_sorted['mês'], rotation=45)
+                plt.tight_layout()
+                st.pyplot(fig2)
+                figuras.append(fig2)
+
+        # ==================== 6. Geração do PDF (HTML) ====================
         def criar_pdf():
             html = f"""
             <html>
@@ -157,7 +167,7 @@ if uploaded_file:
                 <h2>Gráficos</h2>
             """
 
-            for i, fig in enumerate(figuras):
+            for fig in figuras:
                 buf = io.BytesIO()
                 fig.savefig(buf, format='png', dpi=200, bbox_inches='tight')
                 buf.seek(0)
@@ -180,13 +190,12 @@ if uploaded_file:
         st.download_button(
             label="📄 Baixar Relatório em PDF",
             data=pdf_html,
-            file_name=f"relatorio_investimentos_{datetime.now().strftime('%Y%m%d')}.html",  # Streamlit só aceita HTML direto aqui
+            file_name=f"relatorio_investimentos_{datetime.now().strftime('%Y%m%d')}.html",
             mime="text/html",
-            help="Após baixar, abra o arquivo HTML e use Ctrl+P → Salvar como PDF (ou use um conversor online)"
+            help="Após baixar, abra o arquivo HTML e use Ctrl+P → Salvar como PDF."
         )
 
-        # Dica extra para o usuário
-        st.info("💡 Dica: Abra o arquivo baixado no navegador e pressione Ctrl+P → 'Salvar como PDF' para ter o PDF perfeito com todos os gráficos!")
+        st.info("💡 Dica: Abra o arquivo no navegador e pressione Ctrl+P → 'Salvar como PDF'.")
 
     except Exception as e:
         st.error(f"Erro inesperado: {str(e)}")
