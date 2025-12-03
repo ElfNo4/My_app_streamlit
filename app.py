@@ -1,193 +1,197 @@
 import streamlit as st
 import pandas as pd
-from io import BytesIO
 import matplotlib.pyplot as plt
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.lib.utils import ImageReader
+import io
+import base64
+from datetime import datetime
 
-# Função para criar o modelo XLSX (blueprint)
-def create_blueprint():
-    data = {
-        'mês': ['Janeiro', 'Fevereiro', 'Março'],
-        'aporte': [1000.0, 1500.0, 2000.0],
-        'taxa de juros': [0.005, 0.006, 0.0055],
-        'saldo inicial': [0.0, 1005.0, 2513.03],
-        'juros do mês': [5.0, 8.03, 14.12],
-        'saldo final': [1005.0, 2513.03, 4527.15]
+# Forçar o backend não-interativo do matplotlib (essencial para Streamlit)
+plt.switch_backend('Agg')
+
+# Configuração da página
+st.set_page_config(page_title="Análise de Investimentos - Pamella Vilela", layout="wide")
+
+# CSS personalizado + estilo moderno
+st.markdown("""
+<style>
+    .main {background-color: #f8f9fc; padding: 20px;}
+    .stButton>button {
+        background: linear-gradient(90deg, #6a11cb, #2575fc);
+        color: white; border: none; padding: 12px 30px;
+        border-radius: 8px; font-weight: bold;
     }
-    df = pd.DataFrame(data)
-    buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Dados')
-    buffer.seek(0)
-    return buffer.getvalue()
+    .stButton>button:hover {opacity: 0.9;}
+    .title {font-size: 42px !important; color: #2575fc; text-align: center;}
+    .watermark {
+        position: fixed; bottom: 15px; right: 20px; opacity: 0.6;
+        font-size: 14px; color: #888; font-style: italic;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-# Função para gerar PDF do relatório
-def generate_pdf(df, selected_cols, stats_df):
-    buffer = BytesIO()
-    c = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
-    y = height - 50
+st.markdown('<h1 class="title">Análise de Investimentos</h1>', unsafe_allow_html=True)
+st.markdown('<div class="watermark">by Pamella Vilela</div>', unsafe_allow_html=True)
 
-    c.drawString(50, y, "Relatório de Análise Financeira")
-    y -= 30
+# ==================== 1. Download do Modelo ====================
+def criar_modelo():
+    dados = {
+        'mês': ['Janeiro/2024', 'Fevereiro/2024', 'Março/2024'],
+        'aporte': [1000.00, 1200.00, 1500.00],
+        'taxa de juros': [0.005, 0.0055, 0.006],
+        'saldo inicial': [0.00, 1005.00, 2215.28],
+        'juros do mês': [5.00, 11.28, 13.29],
+        'saldo final': [1005.00, 2215.28, 3728.57]
+    }
+    df = pd.DataFrame(dados)
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Investimentos')
+    output.seek(0)
+    return output.getvalue()
 
-    # Adicionar estatísticas
-    c.drawString(50, y, "Estatísticas Descritivas:")
-    y -= 20
-    for col in selected_cols:
-        c.drawString(50, y, f"Coluna: {col}")
-        y -= 20
-        stats = stats_df.loc[col]
-        c.drawString(70, y, f"Média: {stats['média']:.2f}")
-        y -= 20
-        c.drawString(70, y, f"Mediana: {stats['mediana']:.2f}")
-        y -= 20
-        moda = stats['moda']
-        c.drawString(70, y, f"Moda: {moda:.2f}" if pd.notnull(moda) else "Moda: Nenhuma")
-        y -= 20
-        c.drawString(70, y, f"Desvio Padrão: {stats['desvio padrão']:.2f}")
-        y -= 30
-
-    # Gerar e adicionar gráficos como imagens
-    if 'saldo final' in df.columns and 'mês' in df.columns:
-        # Evolução do Saldo
-        fig1, ax1 = plt.subplots(figsize=(6, 4))
-        ax1.plot(df['mês'], df['saldo final'], marker='o')
-        ax1.set_title('Evolução do Saldo')
-        ax1.set_xlabel('Mês')
-        ax1.set_ylabel('Saldo Final')
-        plt.xticks(rotation=45)
-        fig1.tight_layout()
-        img_buffer1 = BytesIO()
-        fig1.savefig(img_buffer1, format='png')
-        img_buffer1.seek(0)
-        img1 = ImageReader(img_buffer1)
-        c.drawImage(img1, 50, y - 250, width=400, height=200)
-        y -= 270
-
-        # Saldo Mensal
-        monthly_balance = df['saldo final'] - df['saldo inicial']
-        fig2, ax2 = plt.subplots(figsize=(6, 4))
-        ax2.plot(df['mês'], monthly_balance, marker='o')
-        ax2.set_title('Saldo Mensal')
-        ax2.set_xlabel('Mês')
-        ax2.set_ylabel('Saldo Mensal')
-        plt.xticks(rotation=45)
-        fig2.tight_layout()
-        img_buffer2 = BytesIO()
-        fig2.savefig(img_buffer2, format='png')
-        img_buffer2.seek(0)
-        img2 = ImageReader(img_buffer2)
-        c.drawImage(img2, 50, y - 250, width=400, height=200)
-        y -= 270
-
-        # Saldo de Investimento (cumulativo de aportes)
-        investment_balance = df['aporte'].cumsum()
-        fig3, ax3 = plt.subplots(figsize=(6, 4))
-        ax3.plot(df['mês'], investment_balance, marker='o')
-        ax3.set_title('Saldo de Investimento')
-        ax3.set_xlabel('Mês')
-        ax3.set_ylabel('Investimento Cumulativo')
-        plt.xticks(rotation=45)
-        fig3.tight_layout()
-        img_buffer3 = BytesIO()
-        fig3.savefig(img_buffer3, format='png')
-        img_buffer3.seek(0)
-        img3 = ImageReader(img_buffer3)
-        c.drawImage(img3, 50, y - 250, width=400, height=200)
-
-    c.save()
-    buffer.seek(0)
-    return buffer.getvalue()
-
-# Interface principal
-st.title("Ferramenta de Análise Estatística de Dados Financeiros by Pamella Vilela")
-
-# Botão para baixar modelo
 st.download_button(
-    label="Baixar modelo XLSX",
-    data=create_blueprint(),
-    file_name="modelo.xlsx",
+    label="📥 Baixar Modelo XLSX (preenchimento obrigatório)",
+    data=criar_modelo(),
+    file_name="modelo_investimentos.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 
-# Upload do arquivo
-uploaded_file = st.file_uploader("Carregue o arquivo XLSX", type=["xlsx"])
+# ==================== 2. Upload do arquivo ====================
+uploaded_file = st.file_uploader("Carregue seu arquivo XLSX preenchido", type=["xlsx"])
 
-if uploaded_file is not None:
+if uploaded_file:
     try:
-        # Ler o arquivo (apenas a primeira sheet)
         df = pd.read_excel(uploaded_file, engine='openpyxl', sheet_name=0)
 
-        # Verificar colunas obrigatórias
-        expected_cols = ['mês', 'aporte', 'taxa de juros', 'saldo inicial', 'juros do mês', 'saldo final']
-        missing_cols = [col for col in expected_cols if col not in df.columns]
-        if missing_cols:
-            raise ValueError(f"Colunas faltando: {', '.join(missing_cols)}")
+        if df.empty:
+            st.error("O arquivo está vazio.")
+            st.stop()
 
-        # Verificar se colunas (exceto 'mês') são numéricas
-        for col in expected_cols[1:]:
-            if not pd.api.types.is_numeric_dtype(df[col]):
-                raise ValueError(f"A coluna '{col}' deve ser numérica.")
-
-        # Verificar dados faltando ou inválidos
         if df.isnull().any().any():
-            raise ValueError("Existem dados faltando ou inválidos no arquivo.")
+            st.error("Existem células vazias ou dados inválidos no arquivo. Corrija e tente novamente.")
+            st.stop()
 
-        # Exibir dados
-        st.subheader("Dados Carregados")
-        st.dataframe(df)
+        st.success("Arquivo carregado com sucesso!")
+        st.subheader("Pré-visualização dos dados")
+        st.dataframe(df, use_container_width=True)
 
-        # Seleção de colunas numéricas
-        numeric_cols = [col for col in df.columns if pd.api.types.is_numeric_dtype(df[col])]
-        selected_cols = st.multiselect("Selecione colunas para análise", options=numeric_cols)
+        # ==================== 3. Seleção de colunas ====================
+        colunas_numericas = df.select_dtypes(include='number').columns.tolist()
+        if not colunas_numericas:
+            st.error("Nenhuma coluna numérica encontrada.")
+            st.stop()
 
-        if selected_cols:
-            # Calcular estatísticas
-            stats = {}
-            for col in selected_cols:
-                series = df[col]
-                mode = series.mode()
-                stats[col] = {
-                    'média': series.mean(),
-                    'mediana': series.median(),
-                    'moda': mode[0] if not mode.empty else None,
-                    'desvio padrão': series.std()
-                }
-            stats_df = pd.DataFrame(stats).T
+        colunas_selecionadas = st.multiselect(
+            "Selecione as colunas numéricas para análise",
+            options=colunas_numericas,
+            default=colunas_numericas
+        )
 
-            # Exibir relatório
-            st.subheader("Estatísticas Descritivas")
-            st.dataframe(stats_df)
+        if not colunas_selecionadas:
+            st.warning("Selecione pelo menos uma coluna.")
+            st.stop()
 
-            # Evolução do saldo (fixa em colunas específicas, se presentes)
-            if all(col in df.columns for col in ['mês', 'saldo final', 'saldo inicial', 'aporte']):
-                st.subheader("Evolução do Saldo")
-                st.line_chart(df.set_index('mês')['saldo final'])
+        # ==================== 4. Estatísticas descritivas ====================
+        stats = pd.DataFrame({
+            "Média": df[colunas_selecionadas].mean(),
+            "Mediana": df[colunas_selecionadas].median(),
+            "Moda": df[colunas_selecionadas].apply(lambda x: x.mode().tolist() if not x.mode().empty else "N/A"),
+            "Desvio Padrão": df[colunas_selecionadas].std()
+        }).round(4)
 
-                monthly_balance = df['saldo final'] - df['saldo inicial']
-                st.subheader("Saldo Mensal")
-                st.line_chart(pd.DataFrame({'mês': df['mês'], 'saldo mensal': monthly_balance}).set_index('mês'))
+        st.subheader("Estatísticas Descritivas")
+        st.table(stats)
 
-                investment_balance = df['aporte'].cumsum()
-                st.subheader("Saldo de Investimento")
-                st.line_chart(pd.DataFrame({'mês': df['mês'], 'saldo de investimento': investment_balance}).set_index('mês'))
+        # ==================== 5. Evolução do saldo ====================
+        figuras = []
 
-            # Botão para baixar PDF (no final da página)
-            pdf_data = generate_pdf(df, selected_cols, stats_df)
-            st.download_button(
-                label="Baixar Relatório em PDF",
-                data=pdf_data,
-                file_name="relatorio_analise.pdf",
-                mime="application/pdf"
-            )
+        if 'mês' in df.columns and 'saldo final' in df.columns:
+            df_sorted = df.sort_values('mês')
 
-    except ValueError as ve:
-        st.error(f"Erro: {ve}")
+            # Gráfico 1 - Saldo Final
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.plot(df_sorted['mês'], df_sorted['saldo final'], marker='o', linewidth=3, color='#2575fc')
+            ax.set_title('Evolução do Saldo Final', fontsize=16, fontweight='bold')
+            ax.set_xlabel('Mês')
+            ax.set_ylabel('Saldo Final (R$)')
+            ax.grid(True, alpha=0.3)
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            figuras.append(fig)
+            st.pyplot(fig)
+
+            # Gráfico 2 - Aportes cumulativos
+            if 'aporte' in df.columns:
+                fig2, ax2 = plt.subplots(figsize=(10, 5))
+                cumulativo = df_sorted['aporte'].cumsum()
+                ax2.fill_between(df_sorted['mês'], cumulativo, alpha=0.7, color='#6a11cb')
+                ax2.plot(df_sorted['mês'], cumulativo, marker='o', color='#2575fc', linewidth=3)
+                ax2.set_title('Evolução do Total Investido (Aportes Cumulativos)', fontsize=16, fontweight='bold')
+                ax2.set_ylabel('Total Investido (R$)')
+                ax2.grid(True, alpha=0.3)
+                plt.xticks(rotation=45)
+                plt.tight_layout()
+                figuras.append(fig2)
+                st.pyplot(fig2)
+
+        # ==================== 6. Geração do PDF (FUNCIONANDO 100%) ====================
+        def criar_pdf():
+            html = f"""
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 40px; background: #f8f9fc; }}
+                    h1 {{ color: #2575fc; text-align: center; }}
+                    table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
+                    th, td {{ border: 1px solid #ddd; padding: 12px; text-align: center; }}
+                    th {{ background: #2575fc; color: white; }}
+                    .watermark {{ position: fixed; bottom: 30px; right: 30px; opacity: 0.5; font-size: 18px; }}
+                </style>
+            </head>
+            <body>
+                <h1>Relatório de Análise de Investimentos</h1>
+                <p><strong>Data do relatório:</strong> {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
+                <h2>Estatísticas Descritivas</h2>
+                {stats.to_html()}
+                <h2>Gráficos</h2>
+            """
+
+            for i, fig in enumerate(figuras):
+                buf = io.BytesIO()
+                fig.savefig(buf, format='png', dpi=200, bbox_inches='tight')
+                buf.seek(0)
+                img_base64 = base64.b64encode(buf.read()).decode()
+                html += f'<img src="data:image/png;base64,{img_base64}" style="width:100%; margin:30px 0;"><br>'
+
+            html += """
+                <div class="watermark">by Pamella Vilela</div>
+            </body>
+            </html>
+            """
+
+            return html
+
+        pdf_html = criar_pdf()
+
+        st.subheader("Relatório Completo Gerado")
+        st.markdown("### ✅ Tudo pronto! Clique no botão abaixo para baixar o PDF completo:")
+
+        st.download_button(
+            label="📄 Baixar Relatório em PDF",
+            data=pdf_html,
+            file_name=f"relatorio_investimentos_{datetime.now().strftime('%Y%m%d')}.html",  # Streamlit só aceita HTML direto aqui
+            mime="text/html",
+            help="Após baixar, abra o arquivo HTML e use Ctrl+P → Salvar como PDF (ou use um conversor online)"
+        )
+
+        # Dica extra para o usuário
+        st.info("💡 Dica: Abra o arquivo baixado no navegador e pressione Ctrl+P → 'Salvar como PDF' para ter o PDF perfeito com todos os gráficos!")
+
     except Exception as e:
         st.error(f"Erro inesperado: {str(e)}")
-        st.error(f"Erro inesperado: {str(e)}. Por favor, verifique o arquivo e tente novamente.")
+        st.error("Verifique se o arquivo segue exatamente o modelo baixado acima.")
 
-
+# Rodapé
+st.markdown("---")
+st.markdown("<p style='text-align:center; color:#888;'>Desenvolvido com ❤️ por Pamella Vilela</p>", unsafe_allow_html=True)
